@@ -5,9 +5,9 @@ function parseQuery(query) {
         const [, fields, table, , whereClause] = match;
         console.log(fields, '-space-', table, '-space-', whereClause)
         return {
-            fields: fields.split(',').map(field => field.trim()),
-            table: table.trim(),
-            whereClause: whereClause ? whereClause.trim() : null
+            fields: fields.split(',').map(field => field.trim().toLowerCase()),
+            table: table.trim().toLowerCase(),
+            whereClause: whereClause ? whereClause.trim().toLowerCase() : null
         };
     } else {
         throw new Error('Invalid query format');
