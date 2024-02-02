@@ -1,4 +1,4 @@
-const { executeDELETEQuery } = require('../src/queryExecuter');
+const { executeDELETEQuery } = require('../src/queryExecutor');
 const { readCSV, writeCSV } = require('../src/csvStorage');
 const fs = require('fs');
 

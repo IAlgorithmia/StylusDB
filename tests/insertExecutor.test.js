@@ -1,4 +1,4 @@
-const { executeINSERTQuery } = require('../src/queryExecuter');
+const { executeINSERTQuery } = require('../src/queryExecutor');
 const { readCSV, writeCSV } = require('../src/csvStorage');
 const fs = require('fs');
 

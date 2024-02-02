@@ -17,6 +17,7 @@
     "jest": "^29.7.0"
   },
   "dependencies": {
+    "child_process": "^1.0.2",
     "json2csv": "^6.0.0-alpha.2"
   }
 }
