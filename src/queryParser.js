@@ -3,6 +3,10 @@ function parseQuery(query) {
         
         query = query.trim();
         let isDistinct = false;
+        if (query.includes('INSERT INTO'))
+        {
+            const insertInfo = parseINSERTquery(query);
+        }
 
         if (query.toUpperCase().includes('SELECT DISTINCT')) {
             isDistinct = true;
@@ -122,6 +126,33 @@ function parseWhereClause(whereString) {
     });
 }
 
+function parseINSERTquery(query)
+{
+    const insertReg = /INSERT INTO (\w+) \(([^)]+)\) VALUES \(([^)]+)\)/;
+    const insertMatch = query.match(insertReg);
+    if (insertMatch)
+    {
+        return {
+            type: 'INSERT',
+            table: insertMatch[1],
+            columns: insertMatch[2].split(',').map(field => field.trim()),
+            values: insertMatch[3].split(',').map(field => field.trim())
+        };
+    }
+}
+
+function parseDELETEquery(query) {
+    const deleteReg = /^DELETE FROM (\w+) WHERE (.+)$/i;
+    const deleteMatch = query.match(deleteReg);
+    if (deleteMatch) {
+        return {
+            type: 'DELETE',
+            table: deleteMatch[1],
+            whereClauses: parseWhereClause(deleteMatch[2])
+        };
+    }
+}
+
 function parseJoinClause(query) {
     const joinRegex = /\s(INNER|LEFT|RIGHT) JOIN\s(.+?)\sON\s([\w.]+)\s*=\s*([\w.]+)/i;
     const joinMatch = query.match(joinRegex);
@@ -155,4 +186,4 @@ function parseJoinClause(query) {
     };
 }
 
-module.exports = { parseJoinClause, parseQuery };
+module.exports = { parseJoinClause, parseQuery, parseINSERTquery, parseDELETEquery};

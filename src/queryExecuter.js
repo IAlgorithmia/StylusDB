@@ -1,7 +1,6 @@
-const { _, parseQuery } = require('./queryParser');
-const readCSV = require('./csvReader');
+const { _, parseQuery, parseINSERTquery, parseDELETEquery } = require('./queryParser');
+const { readCSV, writeCSV } = require('./csvStorage');
 
-// Helper functions for different JOIN types
 function performInnerJoin(data, joinData, joinCondition, fields, table) {
     return data.flatMap(mainRow => {
         return joinData
@@ -24,14 +23,11 @@ function createResultRow(mainRow, joinRow, fields, table, includeAllMainFields) 
     const resultRow = {};
 
     if (includeAllMainFields) {
-        // Include all fields from the main table
         Object.keys(mainRow || {}).forEach(key => {
             const prefixedKey = `${table}.${key}`;
             resultRow[prefixedKey] = mainRow ? mainRow[key] : null;
         });
     }
-
-    // Now, add or overwrite with the fields specified in the query
     fields.forEach(field => {
         const [tableName, fieldName] = field.includes('.') ? field.split('.') : [table, field];
         resultRow[field] = tableName === table && mainRow ? mainRow[fieldName] : joinRow ? joinRow[fieldName] : null;
@@ -62,9 +58,8 @@ function performLeftJoin(data, joinData, joinCondition, fields, table) {
 }
 
 function performRightJoin(data, joinData, joinCondition, fields, table) {
-    // Cache the structure of a main table row (keys only)
     const mainTableRowStructure = data.length > 0 ? Object.keys(data[0]).reduce((acc, key) => {
-        acc[key] = null; // Set all values to null initially
+        acc[key] = null;
         return acc;
     }, {}) : {};
 
@@ -75,10 +70,10 @@ function performRightJoin(data, joinData, joinCondition, fields, table) {
             return mainValue === joinValue;
         });
 
-        // Use the cached structure if no match is found
+
         const mainRowToUse = mainRowMatch || mainTableRowStructure;
 
-        // Include all necessary fields from the 'student' table
+
         return createResultRow(mainRowToUse, joinRow, fields, table, true);
     });
 }
@@ -87,7 +82,7 @@ async function executeSELECTQuery(query) {
     try {
         const { fields, table, whereClauses, joinType, joinTable, joinCondition, groupByFields, orderByFields, limit, isDistinct } = parseQuery(query);
         let data = await readCSV(`${table}.csv`);
-        // Logic for applying JOINs
+
         if (joinTable && joinCondition) {
             const joinData = await readCSV(`${joinTable}.csv`);
             switch (joinType.toUpperCase()) {
@@ -105,11 +100,11 @@ async function executeSELECTQuery(query) {
         }
         data = whereClauses
             ? data.filter(row => whereClauses.every(clause => {
-                // You can expand this to handle different operators
+
                 return evaluateCondition(row, clause);
             }))
             : data;
-        // Selecting the specified fields
+
         if (groupByFields) {
             data = applyGroupBy(data, groupByFields, fields);
         }
@@ -130,7 +125,7 @@ async function executeSELECTQuery(query) {
 
         if (isDistinct) {
             data = [...new Map(data.map(item => [fields.map(field => item[field]).join('|'), item])).values()];
-        }       
+        }
 
         return data.map(row => {
             const selectedRow = {};
@@ -145,19 +140,43 @@ async function executeSELECTQuery(query) {
     }
 }
 
+async function executeINSERTQuery(query) {
+    const { table, columns, values } = parseINSERTquery(query);
+    const data = await readCSV(`${table}.csv`);
+
+
+    const newRow = {};
+    columns.forEach((column, index) => {
+
+        let value = values[index];
+        if (value.startsWith("'") && value.endsWith("'")) {
+            value = value.substring(1, value.length - 1);
+        }
+        newRow[column] = value;
+    });
+
+
+    data.push(newRow);
+
+
+    await writeCSV(`${table}.csv`, data);
+
+    return { message: "Row inserted successfully." };
+}
+
 function applyGroupBy(data, groupByFields, aggregateFunctions) {
     const groupResults = {};
     data.forEach(row => {
-        // Generate a key for the group
+
         const groupKey = groupByFields.map(field => row[field]).join('-');
 
-        // Initialize group in results if it doesn't exist
+
         if (!groupResults[groupKey]) {
             groupResults[groupKey] = { count: 0, sums: {}, mins: {}, maxes: {} };
             groupByFields.forEach(field => groupResults[groupKey][field] = row[field]);
         }
 
-        // Aggregate calculations
+
         groupResults[groupKey].count += 1;
         aggregateFunctions.forEach(func => {
             const match = /(\w+)\((\w+)\)/.exec(func);
@@ -175,15 +194,15 @@ function applyGroupBy(data, groupByFields, aggregateFunctions) {
                     case 'MAX':
                         groupResults[groupKey].maxes[aggField] = Math.max(groupResults[groupKey].maxes[aggField] || value, value);
                         break;
-                    // Additional aggregate functions can be added here
+
                 }
             }
         });
     });
 
-    // Convert grouped results into an array format
+
     return Object.values(groupResults).map(group => {
-        // Construct the final grouped object based on required fields
+
         const finalGroup = {};
         groupByFields.forEach(field => finalGroup[field] = group[field]);
         aggregateFunctions.forEach(func => {
@@ -203,7 +222,7 @@ function applyGroupBy(data, groupByFields, aggregateFunctions) {
                     case 'COUNT':
                         finalGroup[func] = group.count;
                         break;
-                    // Additional aggregate functions can be handled here
+
                 }
             }
         });
@@ -233,22 +252,37 @@ function evaluateCondition(row, clause) {
 
 function parseValue(value) {
 
-    // Return null or undefined as is
+
     if (value === null || value === undefined) {
         return value;
     }
 
-    // If the value is a string enclosed in single or double quotes, remove them
+
     if (typeof value === 'string' && ((value.startsWith("'") && value.endsWith("'")) || (value.startsWith('"') && value.endsWith('"')))) {
         value = value.substring(1, value.length - 1);
     }
 
-    // Check if value is a number
+
     if (!isNaN(value) && value.trim() !== '') {
         return Number(value);
     }
-    // Assume value is a string if not a number
+
     return value;
 }
 
-module.exports = executeSELECTQuery;
+async function executeDELETEQuery(query) {
+    const { table, whereClauses } = parseDELETEquery(query);
+    let data = await readCSV(`${table}.csv`);
+    console.log(table, whereClauses);
+
+    if (whereClauses.length > 0) {
+        data = data.filter(row => !whereClauses.every(clause => evaluateCondition(row, clause)));
+    } else {
+        data = [];
+    }
+    await writeCSV(`${table}.csv`, data);
+
+    return { message: "Rows deleted successfully." };
+}
+
+module.exports = { executeSELECTQuery, executeINSERTQuery, executeDELETEQuery };
