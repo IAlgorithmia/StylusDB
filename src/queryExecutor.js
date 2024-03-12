@@ -203,19 +203,19 @@ async function executeINSERTQuery(query) {
 }
 
 function applyGroupBy(data, groupByFields, aggregateFunctions) {
-    const groupResults = {};
-    data.forEach(row => {
+    const groupResults = new Map();
 
+    data.forEach(row => {
         const groupKey = groupByFields.map(field => row[field]).join('-');
 
-
-        if (!groupResults[groupKey]) {
-            groupResults[groupKey] = { count: 0, sums: {}, mins: {}, maxes: {} };
-            groupByFields.forEach(field => groupResults[groupKey][field] = row[field]);
+        if (!groupResults.has(groupKey)) {
+            groupResults.set(groupKey, { count: 0, sums: {}, mins: {}, maxes: {} });
+            groupByFields.forEach(field => groupResults.get(groupKey)[field] = row[field]);
         }
 
+        const group = groupResults.get(groupKey);
+        group.count += 1;
 
-        groupResults[groupKey].count += 1;
         aggregateFunctions.forEach(func => {
             const match = /(\w+)\((\w+)\)/.exec(func);
             if (match) {
@@ -224,23 +224,20 @@ function applyGroupBy(data, groupByFields, aggregateFunctions) {
 
                 switch (aggFunc.toUpperCase()) {
                     case 'SUM':
-                        groupResults[groupKey].sums[aggField] = (groupResults[groupKey].sums[aggField] || 0) + value;
+                        group.sums[aggField] = (group.sums[aggField] || 0) + value;
                         break;
                     case 'MIN':
-                        groupResults[groupKey].mins[aggField] = Math.min(groupResults[groupKey].mins[aggField] || value, value);
+                        group.mins[aggField] = Math.min(group.mins[aggField] || value, value);
                         break;
                     case 'MAX':
-                        groupResults[groupKey].maxes[aggField] = Math.max(groupResults[groupKey].maxes[aggField] || value, value);
+                        group.maxes[aggField] = Math.max(group.maxes[aggField] || value, value);
                         break;
-
                 }
             }
         });
     });
 
-
-    return Object.values(groupResults).map(group => {
-
+    return Array.from(groupResults.values()).map(group => {
         const finalGroup = {};
         groupByFields.forEach(field => finalGroup[field] = group[field]);
         aggregateFunctions.forEach(func => {
@@ -260,11 +257,9 @@ function applyGroupBy(data, groupByFields, aggregateFunctions) {
                     case 'COUNT':
                         finalGroup[func] = group.count;
                         break;
-
                 }
             }
         });
-
         return finalGroup;
     });
 }
