@@ -80,7 +80,7 @@ function performRightJoin(data, joinData, joinCondition, fields, table) {
 
 async function executeSELECTQuery(query) {
     try {
-        const { fields, table, whereClauses, joinType, joinTable, joinCondition, groupByFields, orderByFields, limit, isDistinct } = parseQuery(query);
+        const { fields, table, whereClauses, joinType, joinTable, joinCondition, groupByFields, hasAggregateWithoutGroupBy, orderByFields, limit, isDistinct } = parseQuery(query);
         let data = await readCSV(`${table}.csv`);
 
         if (joinTable && joinCondition) {
@@ -127,13 +127,51 @@ async function executeSELECTQuery(query) {
             data = [...new Map(data.map(item => [fields.map(field => item[field]).join('|'), item])).values()];
         }
 
-        return data.map(row => {
-            const selectedRow = {};
+        if (hasAggregateWithoutGroupBy) {
+
+            const result = {};
+
             fields.forEach(field => {
-                selectedRow[field] = row[field];
+                const match = /(\w+)\((\*|\w+)\)/.exec(field);
+                if (match) {
+                    const [, aggFunc, aggField] = match;
+                    switch (aggFunc.toUpperCase()) {
+                        case 'COUNT':
+                            result[field] = data.length;
+                            break;
+                        case 'SUM':
+                            result[field] = data.reduce((acc, row) => acc + parseFloat(row[aggField]), 0);
+                            break;
+                        case 'AVG':
+                            result[field] = data.reduce((acc, row) => acc + parseFloat(row[aggField]), 0) / data.length;
+                            break;
+                        case 'MIN':
+                            result[field] = Math.min(...data.map(row => parseFloat(row[aggField])));
+                            break;
+                        case 'MAX':
+                            result[field] = Math.max(...data.map(row => parseFloat(row[aggField])));
+                            break;
+
+                    }
+                }
             });
-            return selectedRow;
-        });
+
+            return [result];
+
+        } else if (groupByFields) {
+            groupResults = applyGroupBy(data, groupByFields, fields);
+            return groupResults;
+        } else {
+
+            return data.map(row => {
+                const selectedRow = {};
+                fields.forEach(field => {
+
+                    selectedRow[field] = row[field];
+                });
+                return selectedRow;
+            });
+        }
     }
     catch (error) {
         throw new Error(`Error executing query: ${error.message}`);
